@@ -19,7 +19,7 @@
 
 import { Client, Wallet, convertStringToHex } from "xrpl";
 import { NETWORKS, CREDENTIAL_TYPE_STRING } from "../config";
-import { MICA_ARTICLE_54_RULE, encodeRuleAsJSON } from "../rules/micaRules";
+import { MICA_ART35_OWN_FUNDS_RULE, buildRulePointerURI } from "../rules/micaRules";
 
 // CredentialCreate and CredentialAccept may not yet be typed in xrpl.js v4.
 // We use the Transaction interface with type casting for forward compatibility.
@@ -36,7 +36,8 @@ export interface CredentialResult {
 }
 
 /**
- * Issues a MiCA Art.54 Regulatory Passport credential on XRPL Testnet.
+ * Issues a MiCA Art.35-style own-funds Regulatory Passport credential on XRPL
+ * Testnet.
  *
  * @param regulatorWallet - The "Regulatory Authority" account that issues the credential
  * @param caspWallet      - The "CASP" account that receives and accepts the credential
@@ -49,9 +50,13 @@ export async function issueRegulatoryPassport(
 ): Promise<CredentialResult> {
   const credentialTypeHex = convertStringToHex(CREDENTIAL_TYPE_STRING);
 
-  // Build a URI that encodes the rule this credential attests to.
-  // We embed the MiCA rule JSON so the credential is self-describing.
-  const credentialUri = `data:application/json;charset=utf-8,${encodeRuleAsJSON(MICA_ARTICLE_54_RULE)}`;
+  // Build a URI identifying the rule this credential attests to.
+  //
+  // NOTE: the XLS-70 Credential URI field is capped at 256 bytes, so the full
+  // rule JSON cannot be embedded here. We store a compact pointer carrying the
+  // ruleId, version and an integrity digest instead — the credential commits to
+  // a specific version of the rule without restating it.
+  const credentialUri = buildRulePointerURI(MICA_ART35_OWN_FUNDS_RULE);
   const credentialUriHex = convertStringToHex(credentialUri);
 
   console.log("\n--- Step 1: CredentialCreate (Regulator → CASP) ---");
@@ -59,8 +64,10 @@ export async function issueRegulatoryPassport(
   console.log(`  Subject : ${caspWallet.address}`);
   console.log(`  Type    : ${CREDENTIAL_TYPE_STRING}`);
   console.log(`  Type Hex: ${credentialTypeHex}`);
+  console.log(`  Rule URI: ${credentialUri}`);
 
-  // CredentialCreate: Regulator asserts that the CASP meets MiCA Art.54 capital requirements.
+  // CredentialCreate: Regulator asserts that the CASP meets the encoded
+  // MiCA Art.35-style own-funds requirement.
   const createTx: RawTransaction = {
     TransactionType: "CredentialCreate",
     Account: regulatorWallet.address,

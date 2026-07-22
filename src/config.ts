@@ -31,15 +31,18 @@ export const NETWORKS = {
 } as const;
 
 /**
- * XLS-70 Credential type identifier for MiCA Article 54 compliance.
- * Must be hex-encoded when sent as a transaction field.
- * Max 64 bytes (128 hex chars).
+ * XLS-70 Credential type identifier for the MiCA Article 35-style own-funds
+ * rule. Must be hex-encoded when sent as a transaction field.
+ * Max 64 bytes (128 hex chars); this string is 30 bytes.
+ *
+ * This value MUST stay in sync with MICA_CREDENTIAL_TYPE in
+ * src/hooks/compliance_check.c — the Hook compares against the same bytes.
  */
-export const CREDENTIAL_TYPE_STRING =
-  "MiCA_ART54_EMT_CAPITAL_COMPLIANT";
+export const CREDENTIAL_TYPE_STRING = "MiCA_ART35_OWN_FUNDS_COMPLIANT";
 
 /**
  * NFTokenTaxon for Regulatory State Tokens.
- * Using the MiCA article number (54) as the taxon — a simple but meaningful convention.
+ * Using the MiCA article number (35) as the taxon — a simple but meaningful
+ * convention that makes regulatory tokens easy to filter on-ledger.
  */
-export const REGULATORY_NFT_TAXON = 54;
+export const REGULATORY_NFT_TAXON = 35;

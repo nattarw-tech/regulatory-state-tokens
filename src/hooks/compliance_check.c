@@ -7,8 +7,8 @@
  * This Hook implements the on-chain enforcement layer of the CASP Regulatory
  * Credentialing PoC. When deployed on the Xahau testnet, it intercepts every
  * outgoing Payment transaction from the CASP account and checks whether the
- * originating account holds a valid "MiCA Art.54 Capital Compliance" credential
- * (issued under the XLS-70 standard).
+ * originating account holds a valid "MiCA Art.35 Own Funds Compliance"
+ * credential (issued under the XLS-70 standard).
  *
  * If the credential is present and accepted → the transaction is allowed.
  * If the credential is absent or expired  → the transaction is REJECTED with
@@ -65,17 +65,19 @@ extern int32_t  util_sha512h    (uint32_t, uint32_t, uint32_t, uint32_t);
 /* --------------------------------------------------------------------------
  * MiCA Credential Type
  *
- * This is the hex-encoded form of: "MiCA_ART54_EMT_CAPITAL_COMPLIANT"
- * (32 bytes → 64 hex chars)
+ * Byte form of: "MiCA_ART35_OWN_FUNDS_COMPLIANT"  (30 bytes)
  *
  * Any CredentialCreate transaction using this type string will produce a
  * Credential object whose CredentialType field equals this value.
+ *
+ * MUST stay byte-identical to CREDENTIAL_TYPE_STRING in src/config.ts.
+ * If these drift apart the Hook will never match the credential and will
+ * block every payment.
  * -------------------------------------------------------------------------- */
 #define MICA_CREDENTIAL_TYPE \
-    "\x4d\x69\x43\x41\x5f\x41\x52\x54\x35\x34\x5f\x45\x4d\x54\x5f" \
-    "\x43\x41\x50\x49\x54\x41\x4c\x5f\x43\x4f\x4d\x50\x4c\x49\x41" \
-    "\x4e\x54"
-#define MICA_CREDENTIAL_TYPE_LEN 32
+    "\x4d\x69\x43\x41\x5f\x41\x52\x54\x33\x35\x5f\x4f\x57\x4e\x5f" \
+    "\x46\x55\x4e\x44\x53\x5f\x43\x4f\x4d\x50\x4c\x49\x41\x4e\x54"
+#define MICA_CREDENTIAL_TYPE_LEN 30
 
 /* Transaction types (numeric codes used by the XRPL protocol) */
 #define ttPAYMENT 0
@@ -147,18 +149,18 @@ int64_t hook(uint32_t reserved)
      *     uint32_t flags = 0;
      *     slot_subfield(slot_no, sfFlags, &flags, 4);
      *
-     *     // Check: is this the MiCA Art.54 credential, and is it accepted?
+     *     // Check: is this the MiCA Art.35 credential, and is it accepted?
      *     if (cred_type_len == MICA_CREDENTIAL_TYPE_LEN &&
      *         memcmp(cred_type, MICA_CREDENTIAL_TYPE, MICA_CREDENTIAL_TYPE_LEN) == 0 &&
      *         (flags & lsfAccepted) != 0) {
      *
-     *         accept("MiCA_ART54_COMPLIANT: Credential verified on-chain", 50, 0);
+     *         accept("MiCA_ART35_COMPLIANT: Credential verified on-chain", 50, 0);
      *         return 0;  // ALLOW the transaction
      *     }
      *   }
      *
      *   // No matching credential found → reject the transaction
-     *   rollback("COMPLIANCE_BLOCK: MiCA Art.54 credential required. "
+     *   rollback("COMPLIANCE_BLOCK: MiCA Art.35 credential required. "
      *            "Contact your National Competent Authority.", 90, 1);
      *   return 1;
      */
@@ -173,15 +175,15 @@ int64_t hook(uint32_t reserved)
 
     if (found_credential) {
         accept(
-            SVAR("COMPLIANCE_OK: MiCA Art.54 EMT Capital credential verified on-chain."),
+            SVAR("COMPLIANCE_OK: MiCA Art.35 own-funds credential verified on-chain."),
             0
         );
     } else {
         rollback(
-            SVAR("COMPLIANCE_BLOCK: MiCA Art.54 EMT Capital credential required. "
+            SVAR("COMPLIANCE_BLOCK: MiCA Art.35 own-funds credential required. "
                  "This account has not been credentialed by an authorised regulator. "
                  "Please contact your National Competent Authority to complete the "
-                 "registration process under MiCA Regulation (EU) 2023/1114, Art.54."),
+                 "registration process under MiCA Regulation (EU) 2023/1114, Art.35."),
             1
         );
     }

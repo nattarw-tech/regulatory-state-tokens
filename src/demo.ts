@@ -6,7 +6,7 @@
  *
  * What this demo does:
  * ┌─────────────────────────────────────────────────────────────────┐
- * │  Step 0  │ Display the encoded MiCA Article 54 rule              │
+ * │  Step 0  │ Display the encoded MiCA Art.35-style own-funds rule  │
  * │  Step 1  │ Fund two XRPL Testnet accounts via faucet             │
  * │           │   ├─ Regulatory Authority (issuer)                   │
  * │           │   └─ CASP Account (subject)                          │
@@ -29,8 +29,10 @@ import dotenv from "dotenv";
 
 import { NETWORKS } from "./config";
 import {
-  MICA_ARTICLE_54_RULE,
-  checkCapitalAdequacy,
+  MICA_ART35_OWN_FUNDS_RULE,
+  checkOwnFundsAdequacy,
+  buildRulePointerURI,
+  computeRuleDigest,
 } from "./rules/micaRules";
 import {
   issueRegulatoryPassport,
@@ -124,32 +126,42 @@ async function main(): Promise<void> {
    * ────────────────────────────────────────────────────────────────────────── */
   section("Step 0: Encoded MiCA Regulatory Rule");
 
-  const rule = MICA_ARTICLE_54_RULE;
-  info(`Regulation : ${rule.regulationReference}`);
-  info(`Article    : ${rule.article} — ${rule.title}`);
+  const rule = MICA_ART35_OWN_FUNDS_RULE;
+  info(`Rule ID    : ${rule.ruleId}  (v${rule.metadata.version})`);
+  info(`Source     : ${rule.provenance.sourceDocument}`);
+  info(`Provision  : ${rule.provenance.articleReference} — ${rule.title}`);
   info(`Applies to : ${rule.applicableTo}`);
   info(
-    `Requirement: Greater of €${rule.requirements.minimumCapital_EUR.toLocaleString()} ` +
-    `OR ${rule.requirements.outstandingTokensPercentage}% of outstanding token value`
+    `Requirement: HIGHEST of €${rule.requirements.minimumCapital_EUR.toLocaleString()}, ` +
+    `${rule.requirements.reserveAssetsPercentage}% of reserve assets, or ` +
+    `${rule.requirements.fixedOverheadsFraction * 100}% of fixed overheads`
   );
+  info(`Taxonomy   : ${rule.taxonomy.classificationPath.join(" › ")}`);
   info(`Status     : ${rule.metadata.status.toUpperCase()}`);
   info(`Effective  : ${rule.metadata.effectiveDate}`);
+  info(`Digest     : ${computeRuleDigest(rule).slice(0, 32)}…`);
+  info(`Pointer URI: ${buildRulePointerURI(rule)}`);
 
-  // Demonstrate the compliance check function
+  // Demonstrate the compliance check function. Each scenario is chosen so that
+  // a different limb of the three-part test is the binding constraint.
   console.log("\n  --- Compliance Check Simulation ---");
   const scenarios = [
-    { ownFunds: 500000, outstanding: 10000000 },   // 2% = 200k → floor 350k → 500k OK
-    { ownFunds: 300000, outstanding: 5000000 },    // 2% = 100k → floor 350k → 300k FAIL
-    { ownFunds: 1000000, outstanding: 60000000 },  // 2% = 1.2M → 1M FAIL
+    // floor binds (350k) → 500k passes
+    { label: "Well-capitalised issuer", ownFunds: 500_000, reserve: 10_000_000, overheads: 400_000 },
+    // floor binds (350k) → 300k fails
+    { label: "Below absolute floor",    ownFunds: 300_000, reserve: 5_000_000,  overheads: 400_000 },
+    // 2% of 60m = 1.2m binds → 1m fails
+    { label: "Large reserve, thin capital", ownFunds: 1_000_000, reserve: 60_000_000, overheads: 800_000 },
+    // 25% of 8m = 2m binds → 1.5m fails
+    { label: "High fixed overheads",    ownFunds: 1_500_000, reserve: 10_000_000, overheads: 8_000_000 },
   ];
 
   for (const s of scenarios) {
-    const result = checkCapitalAdequacy(s.ownFunds, s.outstanding);
+    const result = checkOwnFundsAdequacy(s.ownFunds, s.reserve, s.overheads);
     const symbol = result.compliant ? "✓" : "✗";
-    console.log(
-      `  ${symbol} Own funds: €${s.ownFunds.toLocaleString()}, ` +
-      `Outstanding: €${s.outstanding.toLocaleString()} → ${result.reason}`
-    );
+    console.log(`  ${symbol} ${s.label}`);
+    console.log(`      ${result.reason}`);
+    console.log(`      Binding limb: ${result.bindingLimb}`);
   }
 
   /* ──────────────────────────────────────────────────────────────────────────
@@ -222,7 +234,16 @@ async function main(): Promise<void> {
     const xahauRegulator = await setupXahauAccount(xahauClient);
 
     section("Step 5: Mint XLS-20 Regulatory State Token");
-    nftResult = await mintRegulatoryStateToken(xahauRegulator, xahauClient);
+    // NOTE: this currently targets Xahau, which does not implement XLS-20
+    // (Xahau uses URITokens instead). This step is expected to fail until the
+    // mint is moved to XRPL and a Xahau-side mirror is added. Passing the
+    // Xahau explorer explicitly so the output stays truthful in the meantime.
+    nftResult = await mintRegulatoryStateToken(
+      xahauRegulator,
+      xahauClient,
+      MICA_ART35_OWN_FUNDS_RULE,
+      NETWORKS.XAHAU_TESTNET.explorer
+    );
 
     section("Step 6: Verify NFT and Decode Rule Metadata");
     const tokens = await getRegulatoryTokens(
@@ -234,24 +255,30 @@ async function main(): Promise<void> {
       ok(`Found ${tokens.length} Regulatory State Token(s) on Xahau`);
       for (const token of tokens) {
         info(`NFT ID : ${token.nftId}`);
-        try {
-          // Strip the data URI prefix to get the raw JSON
-          const jsonStr = token.uriDecoded.replace(
-            /^data:application\/json;charset=utf-8,/,
-            ""
-          );
-          const decoded = JSON.parse(jsonStr) as typeof MICA_ARTICLE_54_RULE;
-          ok(`URI decodes to rule: ${decoded.ruleId}`);
-          info(`  Rule status     : ${decoded.metadata.status}`);
-          info(`  Effective date  : ${decoded.metadata.effectiveDate}`);
-          info(
-            `  Capital floor   : €${decoded.requirements.minimumCapital_EUR.toLocaleString()}`
-          );
-          info(
-            `  % outstanding   : ${decoded.requirements.outstandingTokensPercentage}%`
-          );
-        } catch {
-          info(`  Raw URI: ${token.uriDecoded.slice(0, 120)}...`);
+        info(`URI    : ${token.uriDecoded}`);
+
+        // The URI is a pointer of the form:
+        //   rgt:<ruleId>?v=<version>&h=<truncated sha256 digest>
+        // Verifying the digest proves the off-chain rule text we hold is
+        // exactly the version this token commits to.
+        const match = token.uriDecoded.match(
+          /^rgt:([^?]+)\?v=([^&]+)&h=([0-9a-f]+)$/
+        );
+
+        if (match) {
+          const [, ruleId, version, digest] = match;
+          ok(`Pointer resolves to rule: ${ruleId} (v${version})`);
+
+          const expected = computeRuleDigest(rule).slice(0, 32);
+          if (digest === expected) {
+            ok("Integrity check PASSED — on-chain digest matches local rule");
+          } else {
+            console.log("  ⚠ Integrity check FAILED — digest mismatch");
+            info(`  on-chain: ${digest}`);
+            info(`  expected: ${expected}`);
+          }
+        } else {
+          info("  URI is not in the expected rgt: pointer format");
         }
       }
     }
@@ -270,8 +297,8 @@ async function main(): Promise<void> {
 
   console.log(`
   Regulatory Rule Encoding:
-    ✓ MiCA Article 54 encoded as machine-readable TypeScript data
-    ✓ Capital adequacy logic verified against 3 scenarios
+    ✓ MiCA Art.35-style own-funds rule encoded as structured, source-linked data
+    ✓ Three-limb own-funds test verified against 4 scenarios
 
   XLS-70 Regulatory Passport (XRPL Testnet):
     ${credentialResult
@@ -286,13 +313,13 @@ async function main(): Promise<void> {
       ? `✓ NFTokenMint TX:       ${nftResult.mintTxHash}
     ✓ NFT ID:               ${nftResult.nftId}
     ✓ Minter verified on:   ${nftResult.explorerUrl}
-    ✓ URI contains full MiCA Art.54 rule JSON (self-describing token)`
+    ✓ URI is a versioned rule pointer with SHA-256 integrity digest`
       : "⚠ NFT minting skipped (see error above)"
     }
 
   Hook (Reference Implementation):
     ✓ C source: src/hooks/compliance_check.c
-    ✓ Logic: intercepts Payment TXs, checks for MiCA Art.54 credential
+    ✓ Logic: intercepts Payment TXs, checks for MiCA Art.35 credential
     ✓ Compile with LLVM → clang --target=wasm32-unknown-unknown
     ✓ Deploy via SetHook transaction on Xahau
 
