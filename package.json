@@ -1,0 +1,19 @@
+{
+  "name": "casp-regulatory-poc",
+  "version": "1.0.0",
+  "description": "CASP Regulatory Credentialing PoC - MiCA Compliance as Code on XRPL/Xahau",
+  "scripts": {
+    "demo": "ts-node src/demo.ts",
+    "credential": "ts-node src/credentials/issueCredential.ts",
+    "nft": "ts-node src/nft/mintRegulatoryToken.ts"
+  },
+  "dependencies": {
+    "xrpl": "^4.0.0",
+    "dotenv": "^16.4.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0",
+    "ts-node": "^10.9.2",
+    "@types/node": "^20.0.0"
+  }
+}
