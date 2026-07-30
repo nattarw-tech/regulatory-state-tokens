@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "CASP Regulatory Credentialing PoC - MiCA Compliance as Code on XRPL/Xahau",
   "scripts": {
+    "preflight": "ts-node src/preflight.ts",
     "demo": "ts-node src/demo.ts",
     "credential": "ts-node src/credentials/issueCredential.ts",
     "nft": "ts-node src/nft/mintRegulatoryToken.ts"
