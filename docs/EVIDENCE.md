@@ -78,6 +78,74 @@ gate discriminates on regulatory status and on nothing else.
 
 ---
 
+## Run 002 — Rule update without redeployment
+
+| | |
+|---|---|
+| **Date** | 30 July 2026 |
+| **Network** | XRPL Testnet |
+| **Command** | `npm run scenario:update` |
+| **Result** | PASSED — 5 of 5 steps |
+
+| Role | Address |
+|---|---|
+| Regulator (token issuer) | `r3Q7uxK3yrTcPzFNzFb5uCpxWaYRPcRiao` |
+
+### The Regulatory State Token
+
+| | |
+|---|---|
+| NFTokenID (unchanged across the amendment) | `001100005139BF8A27383D5ABDF6B544E2A69506C88D1B1C99E54A3C01297C84` |
+| Taxon | 35 |
+| Flags | `tfBurnable \| tfMutable` (17) — deliberately **not** transferable |
+
+### Transactions
+
+| # | Transaction | Result | Hash |
+|---|---|---|---|
+| 1 | `NFTokenMint` — publishes rule v1 | `tesSUCCESS` | [`9A38FEC9…6953`](https://testnet.xrpl.org/transactions/9A38FEC9933AF45EA62B43E496C94B378835529C20D150CD624BD5ECCA246953) |
+| 2 | `NFTokenModify` — amends to rule v2 | `tesSUCCESS` | [`6E22A053…14B7`](https://testnet.xrpl.org/transactions/6E22A0532BC1FCBCBF2195F0AE63C826095222470238230CFCE63D5DACA714B7) |
+
+### State before and after
+
+| | Before | After |
+|---|---|---|
+| On-chain URI | `rgt:MiCA-ART35-OWNFUNDS-V1?v=1.0&h=977945e627b8f330f4d31918937b0340` | `rgt:MiCA-ART35-OWNFUNDS-V2?v=2.0&h=53a3ebd3f3f32ca663904fe18f947dd3` |
+| Article 35(1)(a) floor | EUR 350,000 | EUR 500,000 *(hypothetical)* |
+| NFTokenID | `0011…7C84` | `0011…7C84` — unchanged |
+
+### What this establishes
+
+**The amendment cost one transaction.** No code was recompiled, redeployed or
+restarted. Nothing that enforces the rule was modified, because the enforcement
+layer never held the threshold — it reads it. This is the separation of stable
+enforcement from mutable parameters that the project argues for, demonstrated
+rather than asserted.
+
+**Token identity survived the amendment.** The NFTokenID is byte-identical
+before and after, so any system holding a reference to the rule keeps a working
+reference. The earlier burn-and-remint design could not do this: every
+amendment minted a new identifier and invalidated every reference to it.
+
+**A stale copy fails loudly rather than quietly.** A verifier still holding v1
+recomputes digest `977945e6…` against an on-chain commitment of `53a3ebd3…`,
+and verification fails. It cannot keep enforcing a superseded threshold without
+noticing. This is the property that makes the pointer design safe: the ledger is
+authoritative, and divergence is detectable by construction.
+
+**The regulatory consequence is real.** A firm holding EUR 400,000 of own funds
+was compliant under v1 and is non-compliant under v2. Nothing about the firm
+changed. Its status changed because the law did — which is precisely the event
+that conventional compliance systems handle slowly and this one handles in a
+single ledger write.
+
+> **A necessary caveat.** The move from EUR 350,000 to EUR 500,000 is a
+> *hypothetical* amendment constructed to exercise the mechanism. The EU has not
+> raised the Article 35(1) floor. See the note on `MICA_ART35_OWN_FUNDS_RULE_V2`
+> in `src/rules/micaRules.ts`.
+
+---
+
 ## Amendment status at time of run
 
 Verified against the live amendment registry. Each primitive relied on is
@@ -103,6 +171,6 @@ Source: `https://api.xrpscan.com/api/v1/amendments`, retrieved 30 July 2026.
 |---|---|
 | 1 — ALLOW | Recorded above (run 001, tx 5) |
 | 2 — BLOCK | Recorded above (run 001, tx 6) |
-| 3 — RULE UPDATE (`NFTokenModify`) | Not yet run |
+| 3 — RULE UPDATE (`NFTokenModify`) | Recorded above (run 002) |
 | 4 — REVOCATION / LAPSE | Not yet run |
 | 5 — THRESHOLD (Smart Escrow, Devnet) | Not yet run — stretch scope |
