@@ -1,336 +1,378 @@
 /**
- * CASP Regulatory Credentialing — End-to-End Demo
+ * The demonstration.
  *
- * This script demonstrates the full "Regulation as Code" proof-of-concept for
- * the Dynamic Compliance Synthesis Engine (DCSE) — MSc Project.
+ * Five acts, one continuous story, run live against XRPL Testnet:
  *
- * What this demo does:
- * ┌─────────────────────────────────────────────────────────────────┐
- * │  Step 0  │ Display the encoded MiCA Art.35-style own-funds rule  │
- * │  Step 1  │ Fund two XRPL Testnet accounts via faucet             │
- * │           │   ├─ Regulatory Authority (issuer)                   │
- * │           │   └─ CASP Account (subject)                          │
- * │  Step 2  │ Issue XLS-70 Regulatory Passport credential           │
- * │           │   ├─ CredentialCreate (regulator signs)              │
- * │           │   └─ CredentialAccept (CASP signs)                   │
- * │  Step 3  │ Verify credential is active on-chain                  │
- * │  Step 4  │ Fund one Xahau Testnet account via faucet             │
- * │  Step 5  │ Mint XLS-20 Regulatory State Token (NFT)              │
- * │  Step 6  │ Verify NFT and decode embedded rule metadata           │
- * │  Step 7  │ Print compliance summary                               │
- * └─────────────────────────────────────────────────────────────────┘
+ *   I    A regulator publishes a capital-adequacy rule as ledger state.
+ *   II   A firm that meets it is authorised, and transacts.
+ *   III  A firm that is not authorised is refused before settlement.
+ *   IV   The law changes. One transaction. No code is redeployed.
+ *   V    The first firm no longer meets the new threshold, its authorisation
+ *        is withdrawn, and the same payment that worked in Act II now fails.
  *
- * Run with: npm run demo
- * Or:       npx ts-node src/demo.ts
+ * Acts IV and V are the point. A firm that was trading legitimately becomes
+ * unable to trade — not because anything about the firm changed, but because
+ * the law did and its supervisor acted. In a conventional arrangement that is a
+ * notice, a remediation period, and manual changes at every counterparty. Here
+ * it is two transactions, effective on the next payment.
+ *
+ * Everything is written to docs/demo-report.html as it happens.
+ *
+ * Run: npm run demo
  */
 
 import { Client, Wallet } from "xrpl";
-import dotenv from "dotenv";
-
-import { NETWORKS } from "./config";
+import { join } from "path";
+import { XRPL_TESTNET } from "./config";
 import {
   MICA_ART35_OWN_FUNDS_RULE,
+  MICA_ART35_OWN_FUNDS_RULE_V2,
   checkOwnFundsAdequacy,
-  buildRulePointerURI,
-  computeRuleDigest,
 } from "./rules/micaRules";
 import {
-  issueRegulatoryPassport,
-  verifyCredential,
-} from "./credentials/issueCredential";
-import {
   mintRegulatoryStateToken,
-  getRegulatoryTokens,
-} from "./nft/mintRegulatoryToken";
+  updateRegulatoryState,
+  readRegulatoryState,
+  verifyStateMatchesRule,
+} from "./state/regulatoryStateToken";
+import { issuePassport, revokePassport, verifyPassport } from "./credentials/passport";
+import {
+  enableDepositAuthorisation,
+  authoriseCredential,
+  attemptPayment,
+} from "./enforcement/depositGate";
+import { EvidenceRecorder } from "./evidence/recorder";
 
-dotenv.config();
+/* ─── presentation ────────────────────────────────────────────────────────── */
 
-/* ─── Formatting helpers ──────────────────────────────────────────────────── */
+const W = 76;
+const rule = (c = "─") => console.log(c.repeat(W));
+const act = (n: string, title: string) => {
+  console.log("");
+  rule("━");
+  console.log(`  ACT ${n}   ${title.toUpperCase()}`);
+  rule("━");
+};
+const beat = (s: string) => console.log(`\n  ${s}`);
+const ok = (s: string) => console.log(`    [ok] ${s}`);
+const no = (s: string) => console.log(`    [!!] ${s}`);
+const note = (s: string) => console.log(`         ${s}`);
 
-function banner(text: string): void {
-  const line = "═".repeat(64);
-  console.log(`\n╔${line}╗`);
-  console.log(`║  ${text.padEnd(62)}║`);
-  console.log(`╚${line}╝`);
-}
+const ONE_XRP = "1000000";
 
-function section(text: string): void {
-  console.log(`\n${"─".repeat(66)}`);
-  console.log(`  ${text}`);
-  console.log(`${"─".repeat(66)}`);
-}
-
-function ok(text: string): void {
-  console.log(`  ✓ ${text}`);
-}
-
-function info(text: string): void {
-  console.log(`  • ${text}`);
-}
-
-/* ─── Account setup ───────────────────────────────────────────────────────── */
-
-async function setupXRPLAccounts(client: Client): Promise<{
-  regulatorWallet: Wallet;
-  caspWallet: Wallet;
-}> {
-  section("Funding XRPL Testnet Accounts (via faucet)");
-  console.log("  This may take 15-30 seconds...\n");
-
-  let regulatorWallet: Wallet;
-  let caspWallet: Wallet;
-
-  if (process.env.XRPL_REGULATOR_SEED) {
-    regulatorWallet = Wallet.fromSeed(process.env.XRPL_REGULATOR_SEED);
-    info(`Using existing Regulator wallet: ${regulatorWallet.address}`);
-  } else {
-    const { wallet } = await client.fundWallet();
-    regulatorWallet = wallet;
-    ok(`Funded Regulator wallet: ${regulatorWallet.address}`);
-  }
-
-  if (process.env.XRPL_CASP_SEED) {
-    caspWallet = Wallet.fromSeed(process.env.XRPL_CASP_SEED);
-    info(`Using existing CASP wallet: ${caspWallet.address}`);
-  } else {
-    const { wallet } = await client.fundWallet();
-    caspWallet = wallet;
-    ok(`Funded CASP wallet:       ${caspWallet.address}`);
-  }
-
-  return { regulatorWallet, caspWallet };
-}
-
-async function setupXahauAccount(client: Client): Promise<Wallet> {
-  section("Funding Xahau Testnet Account (via faucet)");
-  console.log("  This may take 15-30 seconds...\n");
-
-  if (process.env.XAHAU_REGULATOR_SEED) {
-    const wallet = Wallet.fromSeed(process.env.XAHAU_REGULATOR_SEED);
-    info(`Using existing Xahau Regulator wallet: ${wallet.address}`);
-    return wallet;
-  }
-
-  const { wallet } = await client.fundWallet();
-  ok(`Funded Xahau Regulator wallet: ${wallet.address}`);
-  return wallet;
-}
-
-/* ─── Main demo ───────────────────────────────────────────────────────────── */
+/** A firm positioned deliberately between the two thresholds. */
+const FIRM_POSITION = {
+  ownFunds: 400_000,
+  reserveAssets: 1_000_000,
+  fixedOverheads: 200_000,
+};
 
 async function main(): Promise<void> {
-  banner("CASP Regulatory Credentialing PoC — MSc Project Demo");
+  const recorder = new EvidenceRecorder();
 
-  /* ──────────────────────────────────────────────────────────────────────────
-   * STEP 0: Display encoded MiCA rule
-   * ────────────────────────────────────────────────────────────────────────── */
-  section("Step 0: Encoded MiCA Regulatory Rule");
+  console.log("");
+  rule("━");
+  console.log("  REGULATION AS LEDGER STATE");
+  console.log("  Enforcing a capital requirement before settlement, on XRPL");
+  rule("━");
 
-  const rule = MICA_ART35_OWN_FUNDS_RULE;
-  info(`Rule ID    : ${rule.ruleId}  (v${rule.metadata.version})`);
-  info(`Source     : ${rule.provenance.sourceDocument}`);
-  info(`Provision  : ${rule.provenance.articleReference} — ${rule.title}`);
-  info(`Applies to : ${rule.applicableTo}`);
-  info(
-    `Requirement: HIGHEST of €${rule.requirements.minimumCapital_EUR.toLocaleString()}, ` +
-    `${rule.requirements.reserveAssetsPercentage}% of reserve assets, or ` +
-    `${rule.requirements.fixedOverheadsFraction * 100}% of fixed overheads`
-  );
-  info(`Taxonomy   : ${rule.taxonomy.classificationPath.join(" › ")}`);
-  info(`Status     : ${rule.metadata.status.toUpperCase()}`);
-  info(`Effective  : ${rule.metadata.effectiveDate}`);
-  info(`Digest     : ${computeRuleDigest(rule).slice(0, 32)}…`);
-  info(`Pointer URI: ${buildRulePointerURI(rule)}`);
+  const client = new Client(XRPL_TESTNET.wsUrl);
+  await client.connect();
 
-  // Demonstrate the compliance check function. Each scenario is chosen so that
-  // a different limb of the three-part test is the binding constraint.
-  console.log("\n  --- Compliance Check Simulation ---");
-  const scenarios = [
-    // floor binds (350k) → 500k passes
-    { label: "Well-capitalised issuer", ownFunds: 500_000, reserve: 10_000_000, overheads: 400_000 },
-    // floor binds (350k) → 300k fails
-    { label: "Below absolute floor",    ownFunds: 300_000, reserve: 5_000_000,  overheads: 400_000 },
-    // 2% of 60m = 1.2m binds → 1m fails
-    { label: "Large reserve, thin capital", ownFunds: 1_000_000, reserve: 60_000_000, overheads: 800_000 },
-    // 25% of 8m = 2m binds → 1.5m fails
-    { label: "High fixed overheads",    ownFunds: 1_500_000, reserve: 10_000_000, overheads: 8_000_000 },
-  ];
-
-  for (const s of scenarios) {
-    const result = checkOwnFundsAdequacy(s.ownFunds, s.reserve, s.overheads);
-    const symbol = result.compliant ? "✓" : "✗";
-    console.log(`  ${symbol} ${s.label}`);
-    console.log(`      ${result.reason}`);
-    console.log(`      Binding limb: ${result.bindingLimb}`);
-  }
-
-  /* ──────────────────────────────────────────────────────────────────────────
-   * STEP 1–3: XLS-70 Credential on XRPL Testnet
-   * ────────────────────────────────────────────────────────────────────────── */
-  section("Connecting to XRPL Testnet");
-  info(`URL: ${NETWORKS.XRPL_TESTNET.url}`);
-
-  const xrplClient = new Client(NETWORKS.XRPL_TESTNET.url);
-  await xrplClient.connect();
-  ok("Connected to XRPL Testnet");
-
-  let credentialResult;
-  let verificationResult;
+  const failures: string[] = [];
 
   try {
-    const { regulatorWallet, caspWallet } = await setupXRPLAccounts(xrplClient);
+    const info = await client.request({ command: "server_info" });
+    recorder.setMetadata({
+      network: XRPL_TESTNET.name,
+      wsUrl: XRPL_TESTNET.wsUrl,
+      serverVersion: info.result.info.build_version,
+      ledgerAtStart: info.result.info.validated_ledger?.seq ?? 0,
+      startedAt: new Date().toISOString(),
+    });
+    note(`connected — rippled ${info.result.info.build_version}`);
 
-    section("Step 2: Issue XLS-70 Regulatory Passport");
-    credentialResult = await issueRegulatoryPassport(
-      regulatorWallet,
-      caspWallet,
-      xrplClient
+    const [regulator, firmA, firmB, counterparty]: Wallet[] = await Promise.all([
+      client.fundWallet(),
+      client.fundWallet(),
+      client.fundWallet(),
+      client.fundWallet(),
+    ]).then((r) => r.map((x) => x.wallet));
+
+    recorder.noteAccount("Regulator", regulator.address);
+    recorder.noteAccount("Firm A (authorised)", firmA.address);
+    recorder.noteAccount("Firm B (not authorised)", firmB.address);
+    recorder.noteAccount("Counterparty (gated)", counterparty.address);
+
+    /* ── ACT I ─────────────────────────────────────────────────────────── */
+    act("I", "The rule becomes ledger state");
+
+    beat("A regulator publishes the current own-funds requirement.");
+    note("MiCA Article 35(1): own funds of at least the highest of");
+    note("EUR 350,000, 2% of average reserve assets, or a quarter of");
+    note("the preceding year's fixed overheads.");
+
+    const stateV1 = await mintRegulatoryStateToken(
+      client,
+      regulator,
+      MICA_ART35_OWN_FUNDS_RULE
+    );
+    ok(`published as ${stateV1.nftokenID.slice(0, 16)}…`);
+    note(`pointer  ${stateV1.uri}`);
+    note(stateV1.explorerUrl);
+
+    recorder.record({
+      act: "Act I — The rule becomes ledger state",
+      step: "Regulator publishes rule v1",
+      transactionType: "NFTokenMint",
+      result: "tesSUCCESS",
+      settled: null,
+      hash: stateV1.hash,
+      note: "The threshold is now an object on the ledger, not a constant inside a program.",
+    });
+
+    const reading = (await readRegulatoryState(client, regulator.address))[0];
+    const match = verifyStateMatchesRule(reading, MICA_ART35_OWN_FUNDS_RULE);
+    match.matches ? ok("digest verifies against the local rule") : no(match.reason);
+    if (!match.matches) failures.push("Act I verification");
+
+    /* ── ACT II ────────────────────────────────────────────────────────── */
+    act("II", "A compliant firm is authorised and transacts");
+
+    const assessV1 = checkOwnFundsAdequacy(
+      FIRM_POSITION.ownFunds,
+      FIRM_POSITION.reserveAssets,
+      FIRM_POSITION.fixedOverheads,
+      MICA_ART35_OWN_FUNDS_RULE
     );
 
-    section("Step 3: Verify Credential On-Chain");
-    verificationResult = await verifyCredential(
-      caspWallet.address,
-      regulatorWallet.address,
-      xrplClient
+    beat("The regulator assesses Firm A against the published rule.");
+    note(`own funds EUR ${FIRM_POSITION.ownFunds.toLocaleString()}`);
+    note(assessV1.reason);
+    if (!assessV1.compliant) {
+      no("Firm A should meet the v1 threshold — demo mis-parameterised");
+      failures.push("Act II premise");
+    }
+
+    const passport = await issuePassport(client, regulator, firmA);
+    ok("passport issued and accepted");
+    note(`attests ${passport.ruleUri}`);
+    note(passport.explorerUrl);
+
+    recorder.record({
+      act: "Act II — A compliant firm is authorised",
+      step: "Regulator issues Firm A a passport",
+      transactionType: "CredentialCreate",
+      result: "tesSUCCESS",
+      settled: null,
+      hash: passport.createTxHash,
+      note: "Only status goes on-ledger. The audited accounts behind it stay off it.",
+    });
+    recorder.record({
+      act: "Act II — A compliant firm is authorised",
+      step: "Firm A accepts",
+      transactionType: "CredentialAccept",
+      result: "tesSUCCESS",
+      settled: null,
+      hash: passport.acceptTxHash,
+      note: "A firm cannot be given regulatory status it has not agreed to hold.",
+    });
+
+    beat("A counterparty closes its account to unauthorised senders.");
+    const authTx = await enableDepositAuthorisation(client, counterparty);
+    const gateTx = await authoriseCredential(client, counterparty, regulator.address);
+    ok("gate open only to holders of that regulator's passport");
+    note("No address is whitelisted. The gate names the credential, not the firm.");
+    note(gateTx.explorerUrl);
+
+    recorder.record({
+      act: "Act II — A compliant firm is authorised",
+      step: "Counterparty requires authorisation",
+      transactionType: "AccountSet (asfDepositAuth)",
+      result: "tesSUCCESS",
+      settled: null,
+      hash: authTx.hash,
+      note: "The account now refuses incoming value by default.",
+    });
+    recorder.record({
+      act: "Act II — A compliant firm is authorised",
+      step: "Counterparty authorises the credential",
+      transactionType: "DepositPreauth",
+      result: "tesSUCCESS",
+      settled: null,
+      hash: gateTx.hash,
+      note: "A standing exception for anyone holding the named attestation.",
+    });
+
+    beat("Firm A pays.");
+    const paymentA = await attemptPayment(
+      client,
+      firmA,
+      counterparty.address,
+      ONE_XRP,
+      passport.credentialID
+    );
+    paymentA.settled ? ok(`${paymentA.result} — settled`) : no(paymentA.result);
+    note(paymentA.reason);
+    note(paymentA.explorerUrl);
+    if (!paymentA.settled) failures.push("Act II payment");
+
+    recorder.record({
+      act: "Act II — A compliant firm is authorised",
+      step: "Firm A pays, presenting its passport",
+      transactionType: "Payment (CredentialIDs)",
+      result: paymentA.result,
+      settled: paymentA.settled,
+      hash: paymentA.hash,
+      note: paymentA.reason,
+    });
+
+    /* ── ACT III ───────────────────────────────────────────────────────── */
+    act("III", "An unauthorised firm is refused");
+
+    beat("Firm B holds no passport, and attempts the same payment.");
+    const paymentB = await attemptPayment(client, firmB, counterparty.address, ONE_XRP);
+    paymentB.settled
+      ? no(`${paymentB.result} — should have been refused`)
+      : ok(`${paymentB.result} — refused`);
+    note(paymentB.reason);
+    note(paymentB.explorerUrl);
+    if (paymentB.settled) failures.push("Act III should have been refused");
+
+    recorder.record({
+      act: "Act III — An unauthorised firm is refused",
+      step: "Firm B pays with nothing to present",
+      transactionType: "Payment",
+      result: paymentB.result,
+      settled: paymentB.settled,
+      hash: paymentB.hash,
+      note: paymentB.reason,
+    });
+
+    beat("This is the ex-ante claim.");
+    note("The payment did not settle and was not reversed. It never executed.");
+    note("No smart contract was involved and no off-ledger service consulted.");
+
+    /* ── ACT IV ────────────────────────────────────────────────────────── */
+    act("IV", "The law changes");
+
+    beat("The threshold is raised to EUR 500,000 (a hypothetical amendment).");
+    const stateV2 = await updateRegulatoryState(
+      client,
+      regulator,
+      stateV1.nftokenID,
+      MICA_ART35_OWN_FUNDS_RULE_V2
+    );
+    ok("amended in one transaction");
+    note(`pointer  ${stateV2.uri}`);
+    note(`token identity unchanged: ${stateV2.nftokenID === stateV1.nftokenID}`);
+    note(stateV2.explorerUrl);
+
+    recorder.record({
+      act: "Act IV — The law changes",
+      step: "Regulator amends the rule in place",
+      transactionType: "NFTokenModify",
+      result: "tesSUCCESS",
+      settled: null,
+      hash: stateV2.hash,
+      note: "Nothing recompiled or redeployed. The token keeps its identity, so existing references stay valid.",
+    });
+
+    const assessV2 = checkOwnFundsAdequacy(
+      FIRM_POSITION.ownFunds,
+      FIRM_POSITION.reserveAssets,
+      FIRM_POSITION.fixedOverheads,
+      MICA_ART35_OWN_FUNDS_RULE_V2
     );
 
-    if (verificationResult.verified) {
-      ok("Credential VERIFIED on XRPL Testnet ledger");
-      ok(`Explorer: ${credentialResult.explorerUrl}`);
+    beat("Firm A is reassessed. Nothing about the firm has changed.");
+    note(`own funds still EUR ${FIRM_POSITION.ownFunds.toLocaleString()}`);
+    note(assessV2.reason);
+    assessV2.compliant
+      ? no("expected Firm A to fall below the raised threshold")
+      : ok("Firm A no longer meets the requirement");
+    if (assessV2.compliant) failures.push("Act IV premise");
+
+    /* ── ACT V ─────────────────────────────────────────────────────────── */
+    act("V", "The regulator acts, and the gate closes");
+
+    const revocation = await revokePassport(client, regulator, firmA.address);
+    ok("passport withdrawn");
+    note(revocation.explorerUrl);
+
+    recorder.record({
+      act: "Act V — The regulator acts",
+      step: "Regulator withdraws Firm A's passport",
+      transactionType: "CredentialDelete",
+      result: "tesSUCCESS",
+      settled: null,
+      hash: revocation.hash,
+      note: "One transaction. No counterparty is notified and no list is edited.",
+    });
+
+    const status = await verifyPassport(client, firmA.address, regulator.address);
+    status.valid ? no("passport still valid") : ok(status.reason);
+    if (status.valid) failures.push("Act V revocation");
+
+    beat("Firm A attempts the identical payment from Act II.");
+    const paymentAfter = await attemptPayment(
+      client,
+      firmA,
+      counterparty.address,
+      ONE_XRP,
+      passport.credentialID
+    );
+    paymentAfter.settled
+      ? no(`${paymentAfter.result} — should have been refused`)
+      : ok(`${paymentAfter.result} — refused`);
+    note(paymentAfter.reason);
+    note(paymentAfter.explorerUrl);
+    if (paymentAfter.settled) failures.push("Act V should have been refused");
+
+    recorder.record({
+      act: "Act V — The regulator acts",
+      step: "Firm A repeats the Act II payment",
+      transactionType: "Payment (CredentialIDs)",
+      result: paymentAfter.result,
+      settled: paymentAfter.settled,
+      hash: paymentAfter.hash,
+      note: paymentAfter.reason,
+    });
+
+    /* ── close ─────────────────────────────────────────────────────────── */
+    console.log("");
+    rule("━");
+    if (failures.length === 0) {
+      console.log("  DEMONSTRATION COMPLETE");
+      console.log("");
+      console.log("  The same payment, by the same firm, to the same counterparty:");
+      console.log(`    Act II   ${paymentA.result.padEnd(20)} settled`);
+      console.log(`    Act V    ${paymentAfter.result.padEnd(20)} refused before settlement`);
+      console.log("");
+      console.log("  Between them the law changed and a supervisor acted.");
+      console.log("  Nothing was redeployed. No smart contract exists in this system.");
     } else {
-      console.log("  ⚠ Credential not yet visible (ledger may still be closing)");
-      info("This is normal — try querying account_objects in 3-5 seconds");
+      console.log(`  DEMONSTRATION INCOMPLETE — ${failures.length} issue(s):`);
+      failures.forEach((f) => console.log(`    · ${f}`));
     }
-  } catch (err) {
-    console.error("\n  ⚠ XLS-70 Credential step encountered an error:");
-    console.error(`    ${(err as Error).message}`);
-    console.error(
-      "\n  Note: CredentialCreate requires the 'Credentials' amendment on XRPL Testnet."
-    );
-    console.error(
-      "  If the amendment is not enabled, the credential step will fail."
-    );
-    console.error(
-      "  The NFT minting step (Xahau) will still proceed.\n"
-    );
+    rule("━");
+
+    const out = recorder.write(join(__dirname, "..", "docs"));
+    console.log("");
+    console.log(`  Report  ${out.html}`);
+    console.log(`  Data    ${out.json}`);
+    console.log("");
+    console.log("  Open the report and follow any explorer link to verify these");
+    console.log("  transactions independently.");
+    console.log("");
+
+    if (failures.length > 0) process.exitCode = 1;
   } finally {
-    await xrplClient.disconnect();
-    info("Disconnected from XRPL Testnet");
+    await client.disconnect();
   }
-
-  /* ──────────────────────────────────────────────────────────────────────────
-   * STEP 4–6: XLS-20 Regulatory State Token on Xahau Testnet
-   * ────────────────────────────────────────────────────────────────────────── */
-  section("Connecting to Xahau Testnet (Hooks)");
-  info(`URL: ${NETWORKS.XAHAU_TESTNET.url}`);
-
-  const xahauClient = new Client(NETWORKS.XAHAU_TESTNET.url);
-  await xahauClient.connect();
-  ok("Connected to Xahau Testnet");
-
-  let nftResult;
-
-  try {
-    const xahauRegulator = await setupXahauAccount(xahauClient);
-
-    section("Step 5: Mint XLS-20 Regulatory State Token");
-    // NOTE: this currently targets Xahau, which does not implement XLS-20
-    // (Xahau uses URITokens instead). This step is expected to fail until the
-    // mint is moved to XRPL and a Xahau-side mirror is added. Passing the
-    // Xahau explorer explicitly so the output stays truthful in the meantime.
-    nftResult = await mintRegulatoryStateToken(
-      xahauRegulator,
-      xahauClient,
-      MICA_ART35_OWN_FUNDS_RULE,
-      NETWORKS.XAHAU_TESTNET.explorer
-    );
-
-    section("Step 6: Verify NFT and Decode Rule Metadata");
-    const tokens = await getRegulatoryTokens(
-      xahauRegulator.address,
-      xahauClient
-    );
-
-    if (tokens.length > 0) {
-      ok(`Found ${tokens.length} Regulatory State Token(s) on Xahau`);
-      for (const token of tokens) {
-        info(`NFT ID : ${token.nftId}`);
-        info(`URI    : ${token.uriDecoded}`);
-
-        // The URI is a pointer of the form:
-        //   rgt:<ruleId>?v=<version>&h=<truncated sha256 digest>
-        // Verifying the digest proves the off-chain rule text we hold is
-        // exactly the version this token commits to.
-        const match = token.uriDecoded.match(
-          /^rgt:([^?]+)\?v=([^&]+)&h=([0-9a-f]+)$/
-        );
-
-        if (match) {
-          const [, ruleId, version, digest] = match;
-          ok(`Pointer resolves to rule: ${ruleId} (v${version})`);
-
-          const expected = computeRuleDigest(rule).slice(0, 32);
-          if (digest === expected) {
-            ok("Integrity check PASSED — on-chain digest matches local rule");
-          } else {
-            console.log("  ⚠ Integrity check FAILED — digest mismatch");
-            info(`  on-chain: ${digest}`);
-            info(`  expected: ${expected}`);
-          }
-        } else {
-          info("  URI is not in the expected rgt: pointer format");
-        }
-      }
-    }
-  } catch (err) {
-    console.error("\n  ⚠ Xahau NFT step encountered an error:");
-    console.error(`    ${(err as Error).message}`);
-  } finally {
-    await xahauClient.disconnect();
-    info("Disconnected from Xahau Testnet");
-  }
-
-  /* ──────────────────────────────────────────────────────────────────────────
-   * STEP 7: Compliance Summary
-   * ────────────────────────────────────────────────────────────────────────── */
-  banner("Proof-of-Concept Summary");
-
-  console.log(`
-  Regulatory Rule Encoding:
-    ✓ MiCA Art.35-style own-funds rule encoded as structured, source-linked data
-    ✓ Three-limb own-funds test verified against 4 scenarios
-
-  XLS-70 Regulatory Passport (XRPL Testnet):
-    ${credentialResult
-      ? `✓ CredentialCreate TX:  ${credentialResult.createTxHash}
-    ✓ CredentialAccept TX:  ${credentialResult.acceptTxHash}
-    ✓ CASP verified on:     ${NETWORKS.XRPL_TESTNET.explorer}/accounts/${credentialResult.subject}`
-      : "⚠ Credential issuance skipped (see error above)"
-    }
-
-  XLS-20 Regulatory State Token (Xahau Testnet):
-    ${nftResult
-      ? `✓ NFTokenMint TX:       ${nftResult.mintTxHash}
-    ✓ NFT ID:               ${nftResult.nftId}
-    ✓ Minter verified on:   ${nftResult.explorerUrl}
-    ✓ URI is a versioned rule pointer with SHA-256 integrity digest`
-      : "⚠ NFT minting skipped (see error above)"
-    }
-
-  Hook (Reference Implementation):
-    ✓ C source: src/hooks/compliance_check.c
-    ✓ Logic: intercepts Payment TXs, checks for MiCA Art.35 credential
-    ✓ Compile with LLVM → clang --target=wasm32-unknown-unknown
-    ✓ Deploy via SetHook transaction on Xahau
-
-  Architecture demonstrated:
-    Reactive (ex-post) compliance  →  Proactive (ex-ante) compliance
-    Manual audit trails            →  On-chain verifiable credentials
-    Siloed regulatory databases    →  Public, queryable ledger state
-  `);
 }
 
 main().catch((err) => {
-  console.error("\nFatal error:", err);
+  console.error("\nDemonstration aborted:", err);
   process.exit(1);
 });

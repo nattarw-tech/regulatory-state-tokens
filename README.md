@@ -1,97 +1,139 @@
-# regulatory-state-tokens
+# Regulation as Ledger State
 
-**Tokenising Regulatory State for Ex-Ante Compliance on XRPL/Xahau**
+**Enforcing a capital requirement before settlement, on the XRP Ledger**
 
 A proof-of-concept for the MSc Industry Based Research Project (SMM095), MSc Financial
 Technology and Innovation, Bayes Business School — Nisrin Attarwala, supervised by
 Dr Zsofia Kraussl.
 
-> **Status:** Active development (baseline prototype migrated 21 Jul 2026). This README
-> describes the *target* design; some components are still being completed — see
-> [Current status](#current-status).
-
 ---
 
-## The idea in one line
+## The claim
 
-Compliance today is *ex-post* — firms transact first and prove compliance later through
-audits. This PoC tests whether a narrow, quantitative regulatory rule can be enforced
-*ex-ante* — checked on-chain **before** a transaction settles, so a non-compliant
-transaction is never possible in the first place.
+Compliance today is *ex-post*. Firms transact, then demonstrate afterwards that they
+were entitled to, through monitoring, reporting and audit. This project tests whether a
+narrow, quantitative regulatory obligation can instead be enforced *ex-ante* — refused
+by the ledger before it settles, so a non-compliant transaction never executes.
 
-## Architecture
+It can. And the result that matters is **how little it took**.
 
-The design separates a **stable enforcement layer** from **mutable regulatory
-parameters**, so a rule change is handled by updating on-chain state, not by
-redeploying code.
+## The finding
 
-| Component | Ledger | Primitive | Role |
-|---|---|---|---|
-| **Regulatory Passport** | XRPL testnet | XLS-70 Credential | Attests a firm meets the rule |
-| **Regulatory State Token** | XRPL testnet | XLS-20 Dynamic NFT | Carries the current rule parameters (self-describing) |
-| **Mirrored state** | Xahau testnet | URIToken / Hook State | Xahau-local copy the Hook can read |
-| **Enforcement Hook** | Xahau testnet | Hook (C→WASM) | Allows/blocks payments based on rule + passport |
+**No smart contract was required.** Ex-ante enforcement was achieved entirely with
+protocol primitives that are already live on XRPL Mainnet, already audited, and already
+part of the consensus rules.
 
-**Why two ledgers?** XRPL has native Credentials (live on mainnet since Feb 2026) but
-Hooks were judged too risky for XRPL mainnet, so account-level enforcement code only
-exists on Xahau. The two networks have no live bridge, so this PoC **mirrors** state
-onto Xahau under an explicit, documented trust assumption (see the dissertation for the
-governance discussion). Removing that trust assumption (a federated oracle / light-client
-proof) is named as future work.
+This is not a shortcut. XRPL deliberately keeps general smart contracts off Mainnet
+because code executing at the protocol layer can endanger consensus for every
+participant if it is wrong — which is why Hooks live on a separate network. A design
+that achieves the same enforcement with *no* new code at that layer adds no new attack
+surface. The absence of a contract is the contribution, not a gap in it.
 
-## The demonstration (three scenarios)
+An earlier version of this project split the work across two ledgers, mirroring state
+onto Xahau under an explicit trust assumption, because account-level enforcement did not
+exist on XRPL. Between September 2025 and February 2026 that ceased to be true. The
+open engineering question the project set out to answer dissolved rather than being
+solved, and reporting that honestly is part of the result.
 
-1. **ALLOW** — a credentialed firm's payment settles.
-2. **RULE UPDATE** — the regulator raises the threshold with a single transaction; the
-   Hook code is never redeployed.
-3. **BLOCK** — a non-compliant payment is rejected before settlement, with a
-   plain-English reason.
+## How it works
 
----
+| Layer | Primitive | Role |
+|---|---|---|
+| **Regulatory state** | Dynamic NFT (XLS-46d), `tfMutable` | The current rule, amendable in place via `NFTokenModify` |
+| **Regulatory passport** | Credential (XLS-70) | A regulator's attestation that a firm meets it |
+| **Enforcement** | `asfDepositAuth` + `DepositPreauth{AuthorizeCredentials}` | Refuses payments from anyone not holding the attestation |
 
-## Running it (GitHub Codespaces — recommended)
+The gate names the **credential**, never an address. A conventional allowlist records a
+decision taken in the past and stays wrong until every counterparty maintaining one
+remembers to edit it. Here a regulator changes who may transact by issuing or
+withdrawing attestations, and every gate relying on them closes at once — with no
+counterparty acting, or even being told.
 
-This project is designed to run in **Codespaces**, not on a local machine (the Hook
-C→WASM toolchain is far easier in a Linux container).
+The rule token carries a pointer, not the rule: `rgt:<ruleId>?v=<version>&h=<digest>`.
+The ledger holds the authoritative identifier and a SHA-256 commitment; the rule body is
+published off-ledger. A verifier fetches the body, recomputes the digest and compares —
+so a stale copy fails loudly instead of silently enforcing superseded law.
 
-1. Click **`< > Code` → Codespaces → Create codespace on main**.
-2. Wait for the container to build (`npm install` runs automatically).
-3. Run the end-to-end demo:
-   ```bash
-   npm run demo
-   ```
+## Running it
 
-Wallets are auto-funded from the testnet faucets, so no configuration is needed to start.
-To reuse fixed wallets, copy `.env.example` to `.env` and fill in seeds.
+```bash
+npm install
+npm run demo
+```
 
-## Project layout
+Wallets are funded automatically from the testnet faucet; no configuration is needed.
+The run writes `docs/demo-report.html` with every transaction hash as a clickable
+explorer link.
+
+| Command | What it does |
+|---|---|
+| `npm run demo` | The full five-act demonstration |
+| `npm run preflight` | Smallest runnable proof of the enforcement chain |
+| `npm run scenario:update` | Rule amendment in isolation |
+| `npm run scenario:revoke` | Revocation in isolation |
+| `npm test` | 17 unit tests on the rule encoding |
+
+Also runnable in **GitHub Codespaces** (`< > Code → Codespaces`) with nothing installed
+locally, which is the intended path for anyone verifying the work.
+
+## The demonstration
+
+| Act | What happens | Result |
+|---|---|---|
+| I | A regulator publishes the own-funds rule as ledger state | `NFTokenMint` |
+| II | A firm meeting it is authorised, and pays | `tesSUCCESS` |
+| III | A firm without authorisation attempts the same payment | `tecNO_PERMISSION` |
+| IV | The threshold is raised — one transaction, nothing redeployed | `NFTokenModify` |
+| V | The first firm now falls short, is suspended, and is refused | `tecBAD_CREDENTIALS` |
+
+Acts II and V are the same payment, by the same firm, to the same counterparty. Between
+them the law changed and a supervisor acted.
+
+An unanticipated finding sits in Act V: the ledger returns **different codes for
+different failures** — `tecNO_PERMISSION` when nothing is presented,
+`tecBAD_CREDENTIALS` when an attestation is presented that cannot be honoured. A refused
+firm can tell which without contacting anyone. That speaks to the standing objection
+that automated compliance decisions are opaque and therefore hard to challenge.
+
+Full transaction records: [`docs/EVIDENCE.md`](docs/EVIDENCE.md).
+
+## Scope and limits
+
+The encoded rule is a **MiCA Article 35(1)-style** own-funds threshold — deliberately
+narrow, numerical, and chosen because it is testable. It is not a legal opinion, and
+nothing here implements MiCA.
+
+Three limits worth stating plainly:
+
+- **The rule token is not legally authoritative.** Minting it records what a rule says.
+  Who is entitled to mint one is a governance question this code does not answer.
+- **The arithmetic runs off-ledger, by design.** A supervisor assesses periodic evidence
+  — audited accounts, capital returns, attestations — which cannot be put on a ledger.
+  The ledger enforces the *decision*, which is how prudential supervision actually works.
+- **The EUR 500,000 threshold in Act IV is hypothetical**, constructed to exercise the
+  amendment mechanism. The EU has not raised the Article 35(1) floor.
+
+## Layout
 
 ```
 src/
-  config.ts                      Network endpoints + rule identifiers
-  rules/micaRules.ts             The regulatory rule encoded as typed data
-  credentials/issueCredential.ts XLS-70 Regulatory Passport (issue + verify)
-  nft/mintRegulatoryToken.ts     Regulatory State Token (dynamic NFT)
-  hooks/compliance_check.c       Enforcement Hook (C → WASM) for Xahau
-  demo.ts                        End-to-end orchestrator
-.devcontainer/                   Codespaces environment
+  rules/micaRules.ts              The obligation, encoded, with provenance
+  state/regulatoryStateToken.ts   Publish and amend the rule on-ledger
+  credentials/passport.ts         Issue, verify, revoke
+  enforcement/depositGate.ts      The gate — no contract, ~200 lines
+  evidence/recorder.ts            Captures hashes as they validate
+  scenarios/                      Individual scenarios
+  demo.ts                         The five-act demonstration
+docs/
+  EVIDENCE.md                     Every transaction, with explorer links
+  archive/compliance_check.c      The abandoned Xahau Hook, kept as an exhibit
+test/                             Rule-encoding tests
 ```
-
-## Current status
-
-| Component | Status |
-|---|---|
-| Rule encoding | Working |
-| XLS-70 credential (issue + verify) | Working on XRPL testnet |
-| Regulatory State Token | **Being corrected** — must mint on XRPL (XLS-20), not Xahau |
-| `mirrorToXahau` connector | **To build** |
-| Enforcement Hook | **To complete** — logic currently a template |
-| Rule legal basis | **To correct** — relabel to a MiCA Art. 35-style own-funds threshold |
 
 ## Academic note
 
 Portions of this codebase were developed with AI assistance, disclosed in line with the
-project's positioning paper. The architecture, design decisions, and evaluation are the
+project's positioning paper. The architecture, design decisions and evaluation are the
 author's own.
 
 ## License

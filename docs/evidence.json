@@ -1,0 +1,127 @@
+{
+  "metadata": {
+    "network": "XRPL Testnet",
+    "wsUrl": "wss://s.altnet.rippletest.net:51233",
+    "serverVersion": "3.3.0-rc5",
+    "ledgerAtStart": 19497693,
+    "startedAt": "2026-07-30T19:05:37.691Z"
+  },
+  "accounts": {
+    "Regulator": "rnTdwYh2xG3ccvj1YxkKzMw8df7kmfZYQt",
+    "Firm A (authorised)": "rngJcv31ZvktLXECmUkyDVFr1P3c1KWtGM",
+    "Firm B (not authorised)": "rsocgKgMVTZ46S6Vuzt5hay8GzWnmiNRyu",
+    "Counterparty (gated)": "r9VQTteSbit45T2tF5Lh6hz6zaqa3GFX58"
+  },
+  "transactions": [
+    {
+      "act": "Act I — The rule becomes ledger state",
+      "step": "Regulator publishes rule v1",
+      "transactionType": "NFTokenMint",
+      "result": "tesSUCCESS",
+      "settled": null,
+      "hash": "9841B13D0ED969E5A1AE408994A915EFB7A39DC5D759330126DA95A16B0C048B",
+      "note": "The threshold is now an object on the ledger, not a constant inside a program.",
+      "explorerUrl": "https://testnet.xrpl.org/transactions/9841B13D0ED969E5A1AE408994A915EFB7A39DC5D759330126DA95A16B0C048B",
+      "recordedAt": "2026-07-30T19:05:52.198Z"
+    },
+    {
+      "act": "Act II — A compliant firm is authorised",
+      "step": "Regulator issues Firm A a passport",
+      "transactionType": "CredentialCreate",
+      "result": "tesSUCCESS",
+      "settled": null,
+      "hash": "CA6533CA82103840892194C323CA181319BCAFFB76F59E13BABB1E68DEE321E1",
+      "note": "Only status goes on-ledger. The audited accounts behind it stay off it.",
+      "explorerUrl": "https://testnet.xrpl.org/transactions/CA6533CA82103840892194C323CA181319BCAFFB76F59E13BABB1E68DEE321E1",
+      "recordedAt": "2026-07-30T19:06:02.206Z"
+    },
+    {
+      "act": "Act II — A compliant firm is authorised",
+      "step": "Firm A accepts",
+      "transactionType": "CredentialAccept",
+      "result": "tesSUCCESS",
+      "settled": null,
+      "hash": "C1F2E1055F78F0387B949089A08DA64646106994BBECA81369A0D07CD436571D",
+      "note": "A firm cannot be given regulatory status it has not agreed to hold.",
+      "explorerUrl": "https://testnet.xrpl.org/transactions/C1F2E1055F78F0387B949089A08DA64646106994BBECA81369A0D07CD436571D",
+      "recordedAt": "2026-07-30T19:06:02.206Z"
+    },
+    {
+      "act": "Act II — A compliant firm is authorised",
+      "step": "Counterparty requires authorisation",
+      "transactionType": "AccountSet (asfDepositAuth)",
+      "result": "tesSUCCESS",
+      "settled": null,
+      "hash": "68417293909C241199B0A05C93D4554A564C3B79BFAFC73D13C6C89A32E23851",
+      "note": "The account now refuses incoming value by default.",
+      "explorerUrl": "https://testnet.xrpl.org/transactions/68417293909C241199B0A05C93D4554A564C3B79BFAFC73D13C6C89A32E23851",
+      "recordedAt": "2026-07-30T19:06:15.888Z"
+    },
+    {
+      "act": "Act II — A compliant firm is authorised",
+      "step": "Counterparty authorises the credential",
+      "transactionType": "DepositPreauth",
+      "result": "tesSUCCESS",
+      "settled": null,
+      "hash": "CB3906971803C72290B34BDEF091800133AD220BF0818EBC4204B926E243E3AB",
+      "note": "A standing exception for anyone holding the named attestation.",
+      "explorerUrl": "https://testnet.xrpl.org/transactions/CB3906971803C72290B34BDEF091800133AD220BF0818EBC4204B926E243E3AB",
+      "recordedAt": "2026-07-30T19:06:15.888Z"
+    },
+    {
+      "act": "Act II — A compliant firm is authorised",
+      "step": "Firm A pays, presenting its passport",
+      "transactionType": "Payment (CredentialIDs)",
+      "result": "tesSUCCESS",
+      "settled": true,
+      "hash": "9CB5C62AE8A13C3533E6EFBCCF4607362BE4089A98F787B0A9EA750CEAE20480",
+      "note": "Settled. The sender presented a valid regulator-issued passport and the destination's standing authorisation accepted it.",
+      "explorerUrl": "https://testnet.xrpl.org/transactions/9CB5C62AE8A13C3533E6EFBCCF4607362BE4089A98F787B0A9EA750CEAE20480",
+      "recordedAt": "2026-07-30T19:06:22.099Z"
+    },
+    {
+      "act": "Act III — An unauthorised firm is refused",
+      "step": "Firm B pays with nothing to present",
+      "transactionType": "Payment",
+      "result": "tecNO_PERMISSION",
+      "settled": false,
+      "hash": "B6F85A2668C53EDCD4CB32B99627917FD1FF54BEC9EF8C81A5927C336215C83F",
+      "note": "Refused before settlement. The destination admits only holders of a regulator-issued passport, and none was presented. No value moved.",
+      "explorerUrl": "https://testnet.xrpl.org/transactions/B6F85A2668C53EDCD4CB32B99627917FD1FF54BEC9EF8C81A5927C336215C83F",
+      "recordedAt": "2026-07-30T19:06:28.242Z"
+    },
+    {
+      "act": "Act IV — The law changes",
+      "step": "Regulator amends the rule in place",
+      "transactionType": "NFTokenModify",
+      "result": "tesSUCCESS",
+      "settled": null,
+      "hash": "CC9332974AC505AAE6C5166978D5C16D225ECB83826E0B0B8E6F1595D7772802",
+      "note": "Nothing recompiled or redeployed. The token keeps its identity, so existing references stay valid.",
+      "explorerUrl": "https://testnet.xrpl.org/transactions/CC9332974AC505AAE6C5166978D5C16D225ECB83826E0B0B8E6F1595D7772802",
+      "recordedAt": "2026-07-30T19:06:34.381Z"
+    },
+    {
+      "act": "Act V — The regulator acts",
+      "step": "Regulator withdraws Firm A's passport",
+      "transactionType": "CredentialDelete",
+      "result": "tesSUCCESS",
+      "settled": null,
+      "hash": "FE55F77F9BC94A08C5B8C0AD7E94497C71B7D9C38FD4B62BE34050F0FD41C430",
+      "note": "One transaction. No counterparty is notified and no list is edited.",
+      "explorerUrl": "https://testnet.xrpl.org/transactions/FE55F77F9BC94A08C5B8C0AD7E94497C71B7D9C38FD4B62BE34050F0FD41C430",
+      "recordedAt": "2026-07-30T19:06:40.710Z"
+    },
+    {
+      "act": "Act V — The regulator acts",
+      "step": "Firm A repeats the Act II payment",
+      "transactionType": "Payment (CredentialIDs)",
+      "result": "tecBAD_CREDENTIALS",
+      "settled": false,
+      "hash": "19E19A80D20EB5A23C780DF98F08905D17C06313E871B05278D609E8AEF87F49",
+      "note": "Refused before settlement. A passport was presented but the ledger could not honour it — most often because it has been withdrawn by its issuer, or was never accepted by the firm. Note that this is a DIFFERENT refusal from tecNO_PERMISSION: the protocol distinguishes presenting nothing from presenting something invalid, so the reason for a refusal is legible without off-ledger enquiry.",
+      "explorerUrl": "https://testnet.xrpl.org/transactions/19E19A80D20EB5A23C780DF98F08905D17C06313E871B05278D609E8AEF87F49",
+      "recordedAt": "2026-07-30T19:06:48.424Z"
+    }
+  ]
+}
