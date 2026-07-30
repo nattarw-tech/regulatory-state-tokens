@@ -1,5 +1,7 @@
 # Regulation as Ledger State
 
+[![tests](https://github.com/nattarw-tech/regulatory-state-tokens/actions/workflows/tests.yml/badge.svg)](https://github.com/nattarw-tech/regulatory-state-tokens/actions/workflows/tests.yml)
+
 **Enforcing a capital requirement before settlement, on the XRP Ledger**
 
 A proof-of-concept for the MSc Industry Based Research Project (SMM095), MSc Financial
