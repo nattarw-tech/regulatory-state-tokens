@@ -146,6 +146,68 @@ single ledger write.
 
 ---
 
+## Run 003 — Revocation, and the legibility of refusals
+
+| | |
+|---|---|
+| **Date** | 30 July 2026 |
+| **Network** | XRPL Testnet |
+| **Command** | `npm run scenario:revoke` |
+| **Result** | PASSED — 6 of 6 steps |
+
+| Role | Address |
+|---|---|
+| Regulator | `r4kHwtqj6DkFaL5RxFLEzYd7ajVcbMutJt` |
+| Firm | `rLnWmFVU3tHCqrF5KypkEZho4qoxWCCC4g` |
+| Counterparty (gated) | `rKnhJiggznRJWEijCjwUkqjPgQCZoWmc24` |
+
+### The same payment, three times
+
+Identical sender, destination, amount and code path throughout. The only
+variable is the firm's supervisory status.
+
+| Attempt | Presented | Result | Settled | Transaction |
+|---|---|---|---|---|
+| 1 | Valid passport | `tesSUCCESS` | **yes** | [`F4AEDC7D…3510`](https://testnet.xrpl.org/transactions/F4AEDC7DCEA354F7C05AA5EB5A96CFA254117DF8336D4AD83DEDE823F12E3510) |
+| 2 | Withdrawn passport | `tecBAD_CREDENTIALS` | no | [`6C21DFA0…FE82`](https://testnet.xrpl.org/transactions/6C21DFA093E136781327E1FA5AFA8F7636C8567406D34D186064AE079918FE82) |
+| 3 | Nothing | `tecNO_PERMISSION` | no | [`144B426C…18C1`](https://testnet.xrpl.org/transactions/144B426CEE4C491AB8B4F0E7F252B21E2A43A84FF064514DB20F44EA8FE718C1) |
+
+The supervisory act itself:
+`CredentialDelete` — [`A9A43B21…7F3A`](https://testnet.xrpl.org/transactions/A9A43B2158BDFA62A083AB95073A1C024D6AF6339E4F0D51416510A6AD147F3A)
+
+### What this establishes
+
+**Status is read live, not cached.** Attempts 1 and 2 are the same transaction
+submitted by the same account minutes apart. Between them the regulator sent one
+`CredentialDelete`. No gate was reconfigured, no counterparty was notified, and
+no list was edited anywhere — yet the second attempt failed. This is the
+property that separates the design from an allowlist, which records a past
+decision and remains wrong until somebody remembers to amend it at every
+counterparty that maintains one.
+
+**Withdrawal propagates without coordination.** One transaction by the regulator
+closed every gate relying on that credential, simultaneously. The counterparty
+took no action and needed no knowledge of the firm's change in status. In a
+conventional arrangement this is a suspension notice followed by manual updates
+at each counterparty, over days.
+
+**Refusals are legible at the protocol layer.** This was not anticipated in the
+design and is a finding of the run. The ledger returns *different* codes for
+*different* failures: `tecBAD_CREDENTIALS` when an attestation is presented that
+cannot be honoured, and `tecNO_PERMISSION` when none is presented at all. A
+refused firm can therefore tell whether its authorisation has been withdrawn or
+whether it simply failed to present it — without contacting the regulator or the
+counterparty.
+
+This matters to the project's argument. A standing objection to automated
+compliance is opacity: an automated refusal that cannot be explained cannot be
+challenged, and the FCA's December 2025 action against BeAccount for
+"overreliance on automated screening" reflects that concern. Here the reason for
+refusal is carried in the protocol's own result code, not reconstructed
+afterwards from logs.
+
+---
+
 ## Amendment status at time of run
 
 Verified against the live amendment registry. Each primitive relied on is
@@ -172,5 +234,29 @@ Source: `https://api.xrpscan.com/api/v1/amendments`, retrieved 30 July 2026.
 | 1 — ALLOW | Recorded above (run 001, tx 5) |
 | 2 — BLOCK | Recorded above (run 001, tx 6) |
 | 3 — RULE UPDATE (`NFTokenModify`) | Recorded above (run 002) |
-| 4 — REVOCATION / LAPSE | Not yet run |
-| 5 — THRESHOLD (Smart Escrow, Devnet) | Not yet run — stretch scope |
+| 4 — REVOCATION / LAPSE | Recorded above (run 003) |
+| 5 — THRESHOLD (Smart Escrow) | **Not being built.** See below. |
+
+### On scenario 5
+
+An earlier plan included a Smart Escrow (XLS-100) carrying the quantitative
+three-limb test as WebAssembly, so that the arithmetic itself ran on-ledger.
+That scenario has been dropped deliberately, for two reasons.
+
+**It would weaken the central finding.** The result this project reports is that
+ex-ante enforcement required *no* new code at the protocol layer. XRPL keeps
+general smart contracts off Mainnet by design, because code executing in
+consensus can endanger every participant if it is wrong. Adding a contract to a
+demonstration whose point is that no contract was needed would obscure it.
+
+**The credential model is the more faithful one.** Prudential supervision does
+not recompute a firm's capital position at each transaction. A supervisor
+assesses periodic evidence — audited accounts, capital returns, third-party
+attestations, exactly what `complianceCheckpoint.evidence` records in
+`src/rules/micaRules.ts` — and then grants or withholds permission. That
+evidence is off-chain by nature and cannot be otherwise. Putting the arithmetic
+on-ledger would model a supervisory process that does not exist.
+
+Smart Escrows remain the natural vehicle for a rule whose inputs *are* on-ledger
+(a reserve ratio computed from on-chain holdings, for instance), and are
+discussed as future work.
