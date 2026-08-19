@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Regulation as Ledger State — demonstration record</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1a1a1a; --muted: #5f5f5c; --line: #e2e0d9;
+    --panel: #faf9f6; --ok: #2c6e49; --no: #a32d2d; --okbg: #eaf3de; --nobg: #fceaea;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #161614; --fg: #ececea; --muted: #a3a29c; --line: #34332f;
+      --panel: #1f1f1c; --ok: #97c459; --no: #f09595; --okbg: #24301a; --nobg: #351b1b;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 2.5rem 1.25rem 4rem; background: var(--bg); color: var(--fg);
+    font: 15px/1.6 ui-sans-serif, -apple-system, "Segoe UI", system-ui, sans-serif;
+  }
+  main { max-width: 1000px; margin: 0 auto; }
+  h1 { font-size: 1.65rem; margin: 0 0 .35rem; letter-spacing: -0.01em; }
+  .sub { color: var(--muted); margin: 0 0 2rem; }
+  h2 {
+    font-size: 1.05rem; margin: 2.25rem 0 .75rem; padding-bottom: .4rem;
+    border-bottom: 1px solid var(--line);
+  }
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  th {
+    text-align: left; font-weight: 600; color: var(--muted); padding: .5rem .6rem;
+    border-bottom: 1px solid var(--line); font-size: 12px;
+    text-transform: uppercase; letter-spacing: .04em;
+  }
+  td { padding: .6rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+  td.note { color: var(--muted); max-width: 30ch; }
+  td.role { font-weight: 600; white-space: nowrap; }
+  code { font: 12.5px ui-monospace, "Cascadia Code", Menlo, monospace; }
+  a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+  a:hover { opacity: .7; }
+  .code {
+    display: inline-block; padding: .1rem .45rem; border-radius: 4px;
+    font: 12px ui-monospace, Menlo, monospace; white-space: nowrap;
+  }
+  .code.pass { background: var(--okbg); color: var(--ok); }
+  .code.fail { background: var(--nobg); color: var(--no); }
+  .panel {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+    padding: 1rem 1.25rem; margin: 1.5rem 0;
+  }
+  .panel p { margin: .5rem 0; }
+  .tally { display: flex; gap: 2rem; margin: 1.25rem 0 0; flex-wrap: wrap; }
+  .tally div { }
+  .tally b { display: block; font-size: 1.5rem; line-height: 1.2; }
+  .tally span { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+  footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--line); color: var(--muted); font-size: 12.5px; }
+  .scroll { overflow-x: auto; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Regulation as Ledger State</h1>
+  <p class="sub">Demonstration record · XRPL Testnet · 2026-07-30T19:05:37.691Z</p>
+
+  <div class="panel">
+    <p><strong>What this records.</strong> Every row below is a real transaction on a
+    public ledger. Follow any explorer link to verify it independently — the
+    outcomes were produced by the network's own consensus rules, not by this
+    program.</p>
+    <p><strong>The claim being tested.</strong> That a regulatory obligation can be
+    enforced <em>before</em> a transaction settles, rather than audited after it
+    has. Refused payments below did not settle and were not reversed; they never
+    executed at all.</p>
+    <div class="tally">
+      <div><b>1</b><span>settled</span></div>
+      <div><b>2</b><span>refused pre-settlement</span></div>
+      <div><b>0</b><span>smart contracts deployed</span></div>
+    </div>
+  </div>
+
+  <section>
+    <h2>Accounts</h2>
+    <div class="scroll"><table><tbody>
+        <tr>
+          <td class="role">Regulator</td>
+          <td><code><a href="https://testnet.xrpl.org/accounts/rnTdwYh2xG3ccvj1YxkKzMw8df7kmfZYQt"
+             target="_blank" rel="noopener">rnTdwYh2xG3ccvj1YxkKzMw8df7kmfZYQt</a></code></td>
+        </tr>
+        <tr>
+          <td class="role">Firm A (authorised)</td>
+          <td><code><a href="https://testnet.xrpl.org/accounts/rngJcv31ZvktLXECmUkyDVFr1P3c1KWtGM"
+             target="_blank" rel="noopener">rngJcv31ZvktLXECmUkyDVFr1P3c1KWtGM</a></code></td>
+        </tr>
+        <tr>
+          <td class="role">Firm B (not authorised)</td>
+          <td><code><a href="https://testnet.xrpl.org/accounts/rsocgKgMVTZ46S6Vuzt5hay8GzWnmiNRyu"
+             target="_blank" rel="noopener">rsocgKgMVTZ46S6Vuzt5hay8GzWnmiNRyu</a></code></td>
+        </tr>
+        <tr>
+          <td class="role">Counterparty (gated)</td>
+          <td><code><a href="https://testnet.xrpl.org/accounts/r9VQTteSbit45T2tF5Lh6hz6zaqa3GFX58"
+             target="_blank" rel="noopener">r9VQTteSbit45T2tF5Lh6hz6zaqa3GFX58</a></code></td>
+        </tr></tbody></table></div>
+  </section>
+
+  <div class="scroll">
+      <section>
+        <h2>Act I — The rule becomes ledger state</h2>
+        <table>
+          <thead>
+            <tr><th>Step</th><th>Transaction</th><th>Result</th><th>What happened</th><th>Explorer</th></tr>
+          </thead>
+          <tbody>
+          <tr class="">
+            <td>Regulator publishes rule v1</td>
+            <td><code>NFTokenMint</code></td>
+            <td><span class="code pass">tesSUCCESS</span></td>
+            <td class="note">The threshold is now an object on the ledger, not a constant inside a program.</td>
+            <td><a href="https://testnet.xrpl.org/transactions/9841B13D0ED969E5A1AE408994A915EFB7A39DC5D759330126DA95A16B0C048B" target="_blank" rel="noopener"
+               title="9841B13D0ED969E5A1AE408994A915EFB7A39DC5D759330126DA95A16B0C048B">9841B13D0E…</a></td>
+          </tr></tbody>
+        </table>
+      </section>
+      <section>
+        <h2>Act II — A compliant firm is authorised</h2>
+        <table>
+          <thead>
+            <tr><th>Step</th><th>Transaction</th><th>Result</th><th>What happened</th><th>Explorer</th></tr>
+          </thead>
+          <tbody>
+          <tr class="">
+            <td>Regulator issues Firm A a passport</td>
+            <td><code>CredentialCreate</code></td>
+            <td><span class="code pass">tesSUCCESS</span></td>
+            <td class="note">Only status goes on-ledger. The audited accounts behind it stay off it.</td>
+            <td><a href="https://testnet.xrpl.org/transactions/CA6533CA82103840892194C323CA181319BCAFFB76F59E13BABB1E68DEE321E1" target="_blank" rel="noopener"
+               title="CA6533CA82103840892194C323CA181319BCAFFB76F59E13BABB1E68DEE321E1">CA6533CA82…</a></td>
+          </tr>
+          <tr class="">
+            <td>Firm A accepts</td>
+            <td><code>CredentialAccept</code></td>
+            <td><span class="code pass">tesSUCCESS</span></td>
+            <td class="note">A firm cannot be given regulatory status it has not agreed to hold.</td>
+            <td><a href="https://testnet.xrpl.org/transactions/C1F2E1055F78F0387B949089A08DA64646106994BBECA81369A0D07CD436571D" target="_blank" rel="noopener"
+               title="C1F2E1055F78F0387B949089A08DA64646106994BBECA81369A0D07CD436571D">C1F2E1055F…</a></td>
+          </tr>
+          <tr class="">
+            <td>Counterparty requires authorisation</td>
+            <td><code>AccountSet (asfDepositAuth)</code></td>
+            <td><span class="code pass">tesSUCCESS</span></td>
+            <td class="note">The account now refuses incoming value by default.</td>
+            <td><a href="https://testnet.xrpl.org/transactions/68417293909C241199B0A05C93D4554A564C3B79BFAFC73D13C6C89A32E23851" target="_blank" rel="noopener"
+               title="68417293909C241199B0A05C93D4554A564C3B79BFAFC73D13C6C89A32E23851">6841729390…</a></td>
+          </tr>
+          <tr class="">
+            <td>Counterparty authorises the credential</td>
+            <td><code>DepositPreauth</code></td>
+            <td><span class="code pass">tesSUCCESS</span></td>
+            <td class="note">A standing exception for anyone holding the named attestation.</td>
+            <td><a href="https://testnet.xrpl.org/transactions/CB3906971803C72290B34BDEF091800133AD220BF0818EBC4204B926E243E3AB" target="_blank" rel="noopener"
+               title="CB3906971803C72290B34BDEF091800133AD220BF0818EBC4204B926E243E3AB">CB39069718…</a></td>
+          </tr>
+          <tr class="settled">
+            <td>Firm A pays, presenting its passport</td>
+            <td><code>Payment (CredentialIDs)</code></td>
+            <td><span class="code pass">tesSUCCESS</span></td>
+            <td class="note">Settled. The sender presented a valid regulator-issued passport and the destination's standing authorisation accepted it.</td>
+            <td><a href="https://testnet.xrpl.org/transactions/9CB5C62AE8A13C3533E6EFBCCF4607362BE4089A98F787B0A9EA750CEAE20480" target="_blank" rel="noopener"
+               title="9CB5C62AE8A13C3533E6EFBCCF4607362BE4089A98F787B0A9EA750CEAE20480">9CB5C62AE8…</a></td>
+          </tr></tbody>
+        </table>
+      </section>
+      <section>
+        <h2>Act III — An unauthorised firm is refused</h2>
+        <table>
+          <thead>
+            <tr><th>Step</th><th>Transaction</th><th>Result</th><th>What happened</th><th>Explorer</th></tr>
+          </thead>
+          <tbody>
+          <tr class="refused">
+            <td>Firm B pays with nothing to present</td>
+            <td><code>Payment</code></td>
+            <td><span class="code fail">tecNO_PERMISSION</span></td>
+            <td class="note">Refused before settlement. The destination admits only holders of a regulator-issued passport, and none was presented. No value moved.</td>
+            <td><a href="https://testnet.xrpl.org/transactions/B6F85A2668C53EDCD4CB32B99627917FD1FF54BEC9EF8C81A5927C336215C83F" target="_blank" rel="noopener"
+               title="B6F85A2668C53EDCD4CB32B99627917FD1FF54BEC9EF8C81A5927C336215C83F">B6F85A2668…</a></td>
+          </tr></tbody>
+        </table>
+      </section>
+      <section>
+        <h2>Act IV — The law changes</h2>
+        <table>
+          <thead>
+            <tr><th>Step</th><th>Transaction</th><th>Result</th><th>What happened</th><th>Explorer</th></tr>
+          </thead>
+          <tbody>
+          <tr class="">
+            <td>Regulator amends the rule in place</td>
+            <td><code>NFTokenModify</code></td>
+            <td><span class="code pass">tesSUCCESS</span></td>
+            <td class="note">Nothing recompiled or redeployed. The token keeps its identity, so existing references stay valid.</td>
+            <td><a href="https://testnet.xrpl.org/transactions/CC9332974AC505AAE6C5166978D5C16D225ECB83826E0B0B8E6F1595D7772802" target="_blank" rel="noopener"
+               title="CC9332974AC505AAE6C5166978D5C16D225ECB83826E0B0B8E6F1595D7772802">CC9332974A…</a></td>
+          </tr></tbody>
+        </table>
+      </section>
+      <section>
+        <h2>Act V — The regulator acts</h2>
+        <table>
+          <thead>
+            <tr><th>Step</th><th>Transaction</th><th>Result</th><th>What happened</th><th>Explorer</th></tr>
+          </thead>
+          <tbody>
+          <tr class="">
+            <td>Regulator withdraws Firm A's passport</td>
+            <td><code>CredentialDelete</code></td>
+            <td><span class="code pass">tesSUCCESS</span></td>
+            <td class="note">One transaction. No counterparty is notified and no list is edited.</td>
+            <td><a href="https://testnet.xrpl.org/transactions/FE55F77F9BC94A08C5B8C0AD7E94497C71B7D9C38FD4B62BE34050F0FD41C430" target="_blank" rel="noopener"
+               title="FE55F77F9BC94A08C5B8C0AD7E94497C71B7D9C38FD4B62BE34050F0FD41C430">FE55F77F9B…</a></td>
+          </tr>
+          <tr class="refused">
+            <td>Firm A repeats the Act II payment</td>
+            <td><code>Payment (CredentialIDs)</code></td>
+            <td><span class="code fail">tecBAD_CREDENTIALS</span></td>
+            <td class="note">Refused before settlement. A passport was presented but the ledger could not honour it — most often because it has been withdrawn by its issuer, or was never accepted by the firm. Note that this is a DIFFERENT refusal from tecNO_PERMISSION: the protocol distinguishes presenting nothing from presenting something invalid, so the reason for a refusal is legible without off-ledger enquiry.</td>
+            <td><a href="https://testnet.xrpl.org/transactions/19E19A80D20EB5A23C780DF98F08905D17C06313E871B05278D609E8AEF87F49" target="_blank" rel="noopener"
+               title="19E19A80D20EB5A23C780DF98F08905D17C06313E871B05278D609E8AEF87F49">19E19A80D2…</a></td>
+          </tr></tbody>
+        </table>
+      </section></div>
+
+  <footer>
+    <p>Server 3.3.0-rc5, validated ledger
+    19497693 at start.
+    Regenerate with <code>npm run demo</code>.</p>
+    <p>Testnet transactions become unretrievable after a network reset. Where a
+    link has expired, the hash and result code recorded here remain the primary
+    evidence.</p>
+  </footer>
+</main>
+</body>
+</html>

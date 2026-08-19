@@ -197,6 +197,35 @@ export const MICA_ART35_OWN_FUNDS_RULE: MiCARule = {
   },
 };
 
+/**
+ * A revised version of the same obligation, used to demonstrate rule updates.
+ *
+ * ── This is a HYPOTHETICAL amendment, not a real one ─────────────────────────
+ * The European Union has not raised the Article 35(1) floor to EUR 500,000.
+ * This constant exists solely so the demonstration can show what happens when a
+ * threshold moves: the enforcement layer is never redeployed, the credential
+ * type is unchanged, and only the regulatory state on the ledger is rewritten.
+ * It must not be read as a claim about forthcoming EU legislation.
+ *
+ * The version bump and `supersedes` link are what let a verifier holding the
+ * v1 digest detect that the rule it was relying on is no longer current.
+ */
+export const MICA_ART35_OWN_FUNDS_RULE_V2: MiCARule = {
+  ...MICA_ART35_OWN_FUNDS_RULE,
+  ruleId: "MiCA-ART35-OWNFUNDS-V2",
+  requirements: {
+    ...MICA_ART35_OWN_FUNDS_RULE.requirements,
+    minimumCapital_EUR: 500_000,
+  },
+  metadata: {
+    ...MICA_ART35_OWN_FUNDS_RULE.metadata,
+    version: "2.0",
+    supersedes: MICA_ART35_OWN_FUNDS_RULE.ruleId,
+    effectiveDate: "2026-08-01",
+    encodingDate: "2026-07-30",
+  },
+};
+
 /* ─── Encoding helpers ────────────────────────────────────────────────────── */
 
 /**
