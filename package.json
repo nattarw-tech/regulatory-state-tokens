@@ -9,7 +9,8 @@
     "scenario:revoke": "ts-node src/scenarios/04-revocation.ts",
     "demo": "ts-node src/demo.ts",
     "credential": "ts-node src/credentials/issueCredential.ts",
-    "nft": "ts-node src/nft/mintRegulatoryToken.ts"
+    "nft": "ts-node src/nft/mintRegulatoryToken.ts",
+    "verify": "ts-node src/verify-evidence.ts"
   },
   "dependencies": {
     "xrpl": "^4.0.0",
