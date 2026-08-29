@@ -9,8 +9,9 @@
  *      any way? If it does not, the gate cannot be consulting the rule, and
  *      any claim that a rule change caused a refusal is causally wrong.
  *
- *   2. Was the CredentialAccept transaction recorded? A credential is not
- *      valid until accepted, so the appendix is incomplete without it.
+ *   2. Does the CredentialAccept cited in Appendix A match the one the ledger
+ *      actually recorded? A credential is not valid until accepted, so the
+ *      appendix would be incomplete without it.
  *
  * Run: npm run verify
  */
@@ -21,6 +22,7 @@ import { XRPL_TESTNET } from "./config";
 const HASHES: Record<string, string> = {
   "Act I  NFTokenMint": "A277A14B40E15CDFFB1F160D91168E011295D776668AC6BF1DE035D29006A99B",
   "Act II CredentialCreate": "17026398678CB77E4A803472AD499D9729FFD2BA71CBD619BC5CA7E41D779E98",
+  "Act II CredentialAccept": "AA046B79182BD55BF0056A1DC9BC5F874D67B75DB3E5C427F7904409F4494B22",
   "Act II DepositPreauth": "D3AF6C15083FB5E3C11BBC24EC7384BB5F6D9C8697533CD021FEC59D255B86FE",
   "Act II Payment": "D3CA3A9B1D1A56D0798E57B6529FC4A06970C774C8E6E4DC9367E75B7ED4F739",
   "Act III Payment": "3B7BE7030878B6A5F2B35B06CD3A03314D0D9932AD0AB328E58B9234D3E71562",
@@ -111,7 +113,7 @@ async function main(): Promise<void> {
     /* ── Question 2: locate the CredentialAccept ───────────────────────── */
     console.log("");
     line();
-    console.log("  QUESTION 2  Was CredentialAccept recorded, and is it missing from Appendix A?");
+    console.log("  QUESTION 2  Does the CredentialAccept match the one cited in Appendix A?");
     line();
 
     if (caspAddress) {
@@ -145,10 +147,16 @@ async function main(): Promise<void> {
       if (accept) {
         const h = (accept.hash ?? (accept.tx as Record<string, unknown>).hash) as string;
         const d = (accept.tx_json ?? accept.tx) as Record<string, unknown>;
+        const cited = HASHES["Act II CredentialAccept"];
         console.log("");
-        console.log("  CredentialAccept FOUND — and it is absent from Appendix A:");
+        console.log("  CredentialAccept recorded on the ledger:");
         console.log(`    hash  ${h}`);
         if (d.date) console.log(`    time  ${utc(d.date as number)}`);
+        console.log(
+          h.toUpperCase() === cited.toUpperCase()
+            ? "\n  MATCHES the hash cited in Appendix A."
+            : `\n  DOES NOT MATCH Appendix A, which cites ${cited}.`
+        );
       } else {
         console.log("\n  No CredentialAccept found in the retrieved history.");
       }
